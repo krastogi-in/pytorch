@@ -1473,6 +1473,57 @@ class TestInductorDynamic(DynamicShapesTestCase):
         out_compiled.sum().backward()
 
 
+    @parametrize("reduction", ["mean", "sum", "none"])
+    def test_binary_cross_entropy_backward_dynamic_shapes(self, device, reduction):
+
+        def fn(input, target):
+            return torch.nn.functional.binary_cross_entropy(
+                input, target, reduction=reduction
+            )
+
+        shapes = [(4, 8), (7, 13), (2, 5)]
+        compiled_fn = torch.compile(fn, fullgraph=True, dynamic=True)
+
+        for shape in shapes:
+            input_eager = torch.sigmoid(
+                torch.randn(shape, device=device)
+            ).requires_grad_(True)
+            target_eager = torch.rand(shape, device=device)
+
+            input_compiled = input_eager.clone().detach().requires_grad_(True)
+
+            loss_eager = fn(input_eager, target_eager)
+            loss_eager.sum().backward()
+
+            loss_compiled = compiled_fn(input_compiled, target_eager)
+            loss_compiled.sum().backward()
+
+            self.assertEqual(loss_eager, loss_compiled)
+            self.assertEqual(input_eager.grad, input_compiled.grad)
+
+    @parametrize("reduction", ["mean", "sum"])
+    def test_nll_loss_forward_empty_target_dynamic_shapes(self, device, reduction):
+
+        def fn(input, target):
+            return torch.nn.functional.nll_loss(
+                input, target, reduction=reduction
+            )
+
+        compiled_fn = torch.compile(fn, fullgraph=True, dynamic=True)
+
+        inp_eager = torch.nn.functional.log_softmax(
+            torch.randn(0, 5, device=device), dim=1
+        ).requires_grad_(True)
+        tgt = torch.empty(0, dtype=torch.long, device=device)
+
+        inp_compiled = inp_eager.clone().detach().requires_grad_(True)
+
+        loss_eager = fn(inp_eager, tgt)
+        loss_compiled = compiled_fn(inp_compiled, tgt)
+
+        self.assertEqual(loss_eager, loss_compiled)
+
+
 instantiate_device_type_tests(TestInductorDynamic, globals(), allow_xpu=True)
 
 if __name__ == "__main__":

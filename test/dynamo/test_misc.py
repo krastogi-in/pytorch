@@ -7176,6 +7176,106 @@ not ___dict_contains('cccccccc', G['sys'].modules)""",
                         )
                         self.assertEqual(expected, actual)
 
+    def test_loss_backward_dynamic_impl(self):
+        loss_configs = [
+            (F.mse_loss, {}),
+            (F.smooth_l1_loss, {"beta": 1.0}),
+            (F.huber_loss, {"delta": 1.0}),
+            (F.soft_margin_loss, {}),
+        ]
+        shapes = [(3, 4), (5, 9), (2, 7)]
+
+        for loss_fn, extra_kwargs in loss_configs:
+            torch._dynamo.reset()
+            compiled = torch.compile(
+                lambda inp, tgt: loss_fn(
+                    inp, tgt, reduction="mean", **extra_kwargs
+                ),
+                dynamic=True,
+                backend="eager",
+            )
+            for shape in shapes:
+                if loss_fn is F.binary_cross_entropy:
+                    inp = torch.sigmoid(
+                        torch.randn(shape)
+                    ).requires_grad_(True)
+                    tgt = torch.rand(shape)
+                else:
+                    inp = torch.randn(shape, requires_grad=True)
+                    tgt = torch.randn(shape)
+                if loss_fn is F.soft_margin_loss:
+                    tgt = tgt.sign()
+
+                inp_ref = inp.clone().detach().requires_grad_(True)
+                tgt_ref = tgt.clone().detach()
+
+                loss_compiled = compiled(inp, tgt)
+                loss_compiled.backward()
+
+                loss_ref = loss_fn(inp_ref, tgt_ref, reduction="mean", **extra_kwargs)
+                loss_ref.backward()
+
+                self.assertEqual(loss_compiled, loss_ref)
+                self.assertEqual(inp.grad, inp_ref.grad)
+
+    def test_nll_loss_backward_dynamic(self):
+        shapes = [(4, 10), (7, 5), (2, 8)]
+
+        for reduction in ["mean", "sum", "none"]:
+            torch._dynamo.reset()
+            compiled = torch.compile(
+                lambda inp, tgt, w: F.nll_loss(
+                    inp, tgt, weight=w, reduction=reduction
+                ),
+                dynamic=True,
+                backend="eager",
+            )
+            for N, C in shapes:
+                inp = F.log_softmax(
+                    torch.randn(N, C), dim=1).requires_grad_(True)
+                tgt = torch.randint(0, C, (N,))
+                weight = torch.rand(C)
+
+                inp_ref = inp.clone().detach().requires_grad_(True)
+
+                loss_compiled = compiled(inp, tgt, weight)
+                loss_compiled.sum().backward()
+
+                loss_ref = F.nll_loss(
+                    inp_ref, tgt, weight=weight, reduction=reduction
+                )
+                loss_ref.sum().backward()
+
+                self.assertEqual(loss_compiled, loss_ref)
+                self.assertEqual(inp.grad, inp_ref.grad)
+
+    def test_nll_loss2d_backward_dynamic(self):
+        shapes = [(2, 5, 4, 4), (3, 8, 6, 6)]
+
+        for reduction in ["mean", "sum", "none"]:
+            torch._dynamo.reset()
+            compiled = torch.compile(
+                lambda inp, tgt: F.nll_loss(inp, tgt, reduction=reduction),
+                dynamic=True,
+                backend="eager",
+            )
+            for N, C, H, W in shapes:
+                inp = F.log_softmax(
+                    torch.randn(N, C, H, W), dim=1
+                ).requires_grad_(True)
+                tgt = torch.randint(0, C, (N, H, W))
+
+                inp_ref = inp.clone().detach().requires_grad_(True)
+
+                loss_compiled = compiled(inp, tgt)
+                loss_compiled.sum().backward()
+
+                loss_ref = F.nll_loss(inp_ref, tgt, reduction=reduction)
+                loss_ref.sum().backward()
+
+                self.assertEqual(loss_compiled, loss_ref)
+                self.assertEqual(inp.grad, inp_ref.grad)
+
     def test_repr(self):
         class Config:
             def __repr__(self):

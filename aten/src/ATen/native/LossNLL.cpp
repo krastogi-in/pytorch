@@ -68,12 +68,12 @@ TORCH_META_FUNC(nll_loss_forward)
   const auto n_classes = self.size(-1);
 
   TORCH_CHECK(
-      !weight.defined() || (weight.dim() == 1 && weight.numel() == n_classes),
+      !weight.defined() || (weight.dim() == 1 && weight.sym_numel() == n_classes),
       "weight tensor should be defined either for all ",
       n_classes,
       " classes or no classes"
       " but got weight tensor of shape: ",
-      weight.sizes());
+      weight.sym_sizes());
 
   const auto n_dims = self.dim();
   const auto batch_size = self.size(0);
@@ -111,17 +111,17 @@ TORCH_META_FUNC(nll_loss_backward)
       target.sizes(),
       ")")
   TORCH_CHECK(
-      total_weight.numel() == 1,
+      total_weight.sym_numel() == 1,
       "expected total_weight to be a  single element tensor, got: ",
-      total_weight.sizes(),
+      total_weight.sym_sizes(),
       " (",
-      total_weight.numel(),
+      total_weight.sym_numel(),
       " elements)");
 
   const auto& weight = weight_opt.getTensorRef();
 
   TORCH_CHECK(
-      !weight.defined() || weight.numel() == self.size(-1),
+      !weight.defined() || weight.sym_numel() == self.size(-1),
       "weight tensor should be defined either for all or no classes");
 
   const auto n_dims = self.dim();
@@ -131,7 +131,7 @@ TORCH_META_FUNC(nll_loss_backward)
     check_dim_size(grad_output, 1, 0, batch_size);
   } else {
     TORCH_CHECK(
-        grad_output.dim() <= 1 && grad_output.numel() == 1,
+        grad_output.dim() <= 1 && grad_output.sym_numel() == 1,
         "Expected a single element grad_output tensor, but got: ",
         grad_output.sizes());
   }
@@ -215,7 +215,7 @@ void nll_loss_out_frame(
   // produce scalar outputs for the reduction case
   at::native::resize_output(output, {});
 
-  if (target.numel() == 0) {
+  if (target.sym_numel() == 0) {
     // Here target (and input) have zero elements
     // Mean reduction on empty tensors produces NaN. See the discussion in
     // https://github.com/pytorch/pytorch/pull/64572#issuecomment-926504162

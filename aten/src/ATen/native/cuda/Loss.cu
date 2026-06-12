@@ -134,7 +134,7 @@ Tensor& binary_cross_entropy_backward_out_cuda(const Tensor& grad, const Tensor&
     grad_input.mul_(weight);
   }
   if (reduction == at::Reduction::Mean) {
-    grad_input.div_(input.numel());
+    grad_input.div_(input.sym_numel());
   }
   return grad_input;
 }
@@ -337,7 +337,7 @@ void nll_loss_forward_out_cuda_template(
   at::native::resize_output(output, {});
   total_weight.resize_({});
 
-  if (target.numel() == 0) {
+  if (target.sym_numel() == 0) {
     // Here target (and input) have zero elements
     // Mean reduction on empty tensors produces NaN. See the discussion in
     // https://github.com/pytorch/pytorch/pull/64572#issuecomment-926504162

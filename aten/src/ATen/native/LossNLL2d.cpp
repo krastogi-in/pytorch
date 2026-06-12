@@ -162,7 +162,7 @@ void nll_loss2d_forward_out_frame(
   // produce scalar outputs for the reduction case
   at::native::resize_output(output, {});
 
-  if (target.numel() == 0) {
+  if (target.sym_numel() == 0) {
     // Here target (and input) have zero elements
     // Mean reduction on empty tensors produces NaN. See the discussion in
     // https://github.com/pytorch/pytorch/pull/64572#issuecomment-926504162
@@ -331,7 +331,7 @@ void nll_loss2d_backward_out_frame(
   const scalar_t total_weight_value = *total_weight.const_data_ptr<scalar_t>();
 
   TORCH_CHECK(
-      grad_output.dim() <= 1 && grad_output.numel() == 1,
+      grad_output.dim() <= 1 && grad_output.sym_numel() == 1,
       "Expected a single element grad_output tensor, but got: ",
       grad_output.sizes());
 
@@ -381,11 +381,11 @@ void nll_loss2d_backward_out_cpu_template(
   grad_input.zero_();
   TORCH_CHECK(grad_input.is_contiguous(), "grad_input must be contiguous");
   TORCH_CHECK(
-      total_weight.numel() == 1,
+      total_weight.sym_numel() == 1,
       "expected total_weight to be a single element tensor, got: ",
-      total_weight.sizes(),
+      total_weight.sym_sizes(),
       " (",
-      total_weight.numel(),
+      total_weight.sym_numel(),
       " elements)");
 
   AT_DISPATCH_FLOATING_TYPES_AND2(

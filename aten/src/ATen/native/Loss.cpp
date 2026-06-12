@@ -341,7 +341,7 @@ Tensor& binary_cross_entropy_backward_out_cpu(const Tensor& grad, const Tensor& 
         grad_input.mul_(*weight_opt);
     }
     if (reduction == at::Reduction::Mean) {
-        grad_input.div_(input.numel());
+        grad_input.div_(input.sym_numel());
     }
     return grad_input;
 }
@@ -381,10 +381,10 @@ Tensor poisson_nll_loss(const Tensor& input, const Tensor& target, const bool lo
 }
 
 Tensor& soft_margin_loss_backward_out(const Tensor& grad_output, const Tensor& input, const Tensor& target, int64_t reduction, Tensor& grad_input) {
-  auto norm = reduction == Reduction::Mean ? 1. / input.numel() : 1.;
+  auto norm = reduction == Reduction::Mean ? -1. / input.sym_numel() : -1.;
   auto z = at::exp(-target * input);
   // inplace version of: grad_input = -norm * target * z / (1. + z) * grad_output;
-  at::mul_out(grad_input, target, z).mul_(-norm);
+  at::mul_out(grad_input, target, z).mul_(norm);
   z.add_(1);
   grad_input.div_(z).mul_(grad_output);
   return grad_input;
@@ -420,7 +420,7 @@ Tensor soft_margin_loss(
 }
 
 Tensor& smooth_l1_loss_backward_out(const Tensor& grad_output, const Tensor& input, const Tensor& target, int64_t reduction, double beta, Tensor& grad_input) {
-  auto norm = reduction == Reduction::Mean ? 1. / input.numel() : 1.;
+  auto norm = reduction == Reduction::Mean ? 1. / input.sym_numel(): 1.;
   auto iter = at::TensorIteratorConfig()
     .add_output(grad_input)
     .add_const_input(input)
@@ -465,7 +465,7 @@ Tensor huber_loss_backward(const Tensor& grad_output, const Tensor& input, const
 }
 
 Tensor& huber_loss_backward_out(const Tensor& grad_output, const Tensor& input, const Tensor& target, int64_t reduction, double delta, Tensor& grad_input) {
-  auto norm = (reduction == Reduction::Mean) ? (1. / input.numel()) : 1.;
+  auto norm = (reduction == Reduction::Mean) ? (1. / input.sym_numel()) : 1.;
   auto iter = at::TensorIteratorConfig()
     .add_output(grad_input)
     .add_const_input(input)
@@ -483,7 +483,7 @@ Tensor mse_loss_backward(const Tensor& grad_output, const Tensor& input, const T
 
 Tensor& mse_loss_backward_out(const Tensor& grad_output,
     const Tensor& input, const Tensor& target, int64_t reduction, Tensor& grad_input) {
-  auto norm = reduction == Reduction::Mean ? 2. / input.numel() : 2.;
+  auto norm = reduction == Reduction::Mean ? 2. / input.sym_numel(): 2.;
   auto iter = at::TensorIteratorConfig()
     .add_output(grad_input)
     .add_const_input(input)
