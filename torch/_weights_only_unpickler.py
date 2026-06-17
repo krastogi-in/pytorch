@@ -46,6 +46,7 @@ from pickle import (
     EMPTY_LIST,
     EMPTY_SET,
     EMPTY_TUPLE,
+    FRAME,
     GLOBAL,
     LONG1,
     LONG_BINGET,
@@ -296,6 +297,8 @@ def get_globals_in_pkl(file) -> set[str]:
             strlen = read(1)[0]
             read(strlen)
         # first and last op
+        elif key[0] == FRAME[0]:
+            read(8)
         elif key[0] == PROTO[0]:
             read(1)[0]
         elif key[0] == STOP[0]:
@@ -552,6 +555,9 @@ class Unpickler:
                 data = read(n)
                 self.append(decode_long(data))
             # First and last deserializer ops
+            elif key[0] == FRAME[0]:
+                # FRAME is a protocol 4 framing hint; skip the 8-byte length
+                read(8)
             elif key[0] == PROTO[0]:
                 self.proto = read(1)[0]
                 if self.proto != 2:

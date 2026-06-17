@@ -95,6 +95,34 @@ class TestDCPCompatbility(TestCase):
         dcp.load(load_sd, checkpoint_id=self.temp_dir)
         self.assertEqual(sd, load_sd)
 
+    @with_temp_dir
+    def test_metadata_load(self) -> None:
+        dcp.save({"a": torch.zeros(4, 4)}, storage_writer=dcp.FileSystemWriter(self.temp_dir))
+
+        reader = dcp.FileSystemReader(self.temp_dir)
+        metadata = reader.read_metadata()
+        self.assertIsInstance(metadata, Metadata)
+        self.assertIn("a", metadata.state_dict_metadata)
+        self.assertIsInstance(
+            metadata.state_dict_metadata["a"], TensorStorageMetadata
+        )
+
+    @with_temp_dir
+    def test_metadata_roundtrip_with_bytes_and_tensors(self) -> None:
+        """Verify metadata roundtrip works for state dicts with mixed types."""
+        sd = {
+            "tensor": torch.zeros(4, 4),
+            "scalar": 42,
+            "nested": {"inner": torch.ones(2, 2)},
+        }
+        dcp.save(sd, storage_writer=dcp.FileSystemWriter(self.temp_dir))
+
+        reader = dcp.FileSystemReader(self.temp_dir)
+        metadata = reader.read_metadata()
+        self.assertIsInstance(metadata, Metadata)
+        self.assertIn("tensor", metadata.state_dict_metadata)
+        self.assertIn("scalar", metadata.state_dict_metadata)
+
 
 if __name__ == "__main__":
     run_tests()

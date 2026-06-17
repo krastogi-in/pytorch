@@ -5,7 +5,6 @@ import io
 import json
 import operator
 import os
-import pickle
 import queue
 import threading
 import uuid
@@ -37,7 +36,17 @@ from torch.distributed.checkpoint._hf_utils import (
     FORMAT_VALUE,
     HF_DCP_VERSION,
 )
-from torch.distributed.checkpoint.metadata import Metadata, STATE_DICT_TYPE, StorageMeta
+from torch.distributed.checkpoint.metadata import (
+    BytesStorageMetadata,
+    ChunkStorageMetadata,
+    _MEM_FORMAT_ENCODING,
+    Metadata,
+    MetadataIndex,
+    STATE_DICT_TYPE,
+    StorageMeta,
+    TensorProperties,
+    TensorStorageMetadata,
+)
 from torch.distributed.checkpoint.planner import (
     LoadItemType,
     LoadPlan,
@@ -95,6 +104,19 @@ class SerializationFormat(Enum):
 
 
 DEFAULT_SUFFIX = ".distcp"
+
+torch.serialization.add_safe_globals([
+    Metadata,
+    StorageMeta,
+    TensorStorageMetadata,
+    BytesStorageMetadata,
+    TensorProperties,
+    ChunkStorageMetadata,
+    MetadataIndex,
+    _MEM_FORMAT_ENCODING,
+    _StorageInfo,
+    _StoragePrefix,
+])
 
 
 def _generate_uuid() -> str:
@@ -771,7 +793,7 @@ class _FileSystemWriter(StorageWriter):
         )
         tmp_path = cast(Path, self.fs.concat_path(self.path, tmp_filename))
         with self.fs.create_stream(tmp_path, "wb") as metadata_file:
-            pickle.dump(metadata, metadata_file)
+            torch.save(metadata, cast(IO[bytes], metadata_file))
             if self.sync_files:
                 try:
                     os.fsync(metadata_file.fileno())
@@ -790,7 +812,7 @@ class _FileSystemWriter(StorageWriter):
         self.fs.rename(tmp_path, metadata_path)
 
     def storage_meta(self) -> StorageMeta | None:
-        return StorageMeta(checkpoint_id=self.checkpoint_id, save_id=self.save_id)
+        return StorageMeta(checkpoint_id=str(self.checkpoint_id), save_id=self.save_id)
 
     def _get_metadata_path(self, rank: int | None = None) -> os.PathLike:
         filename = f"{_metadata_fn}" if rank is None else f"__{rank}{_metadata_fn}"
@@ -927,7 +949,17 @@ class FileSystemReader(StorageReader):
         rank = kwargs.get("rank")
         path = self._get_metadata_path(rank)
         with self.fs.create_stream(path, "rb") as metadata_file:
-            metadata = pickle.load(metadata_file)
+            try:
+                metadata = torch.load(
+                    cast(IO[bytes], metadata_file),
+                    weights_only=True,
+                )
+            except Exception:
+                # Fallback for checkpoints written with pickle.dump (pre-torch.save format)
+                metadata_file.seek(0)
+                metadata = torch._weights_only_unpickler.Unpickler(
+                    metadata_file
+                ).load()
 
         if getattr(metadata, "storage_meta", None) is None:
             metadata.storage_meta = StorageMeta()
